@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+models/**
+!models/**/
+!models/**/.gitkeep
+data/db/*
+!data/db/.gitkeep
+data/gallery/*
+!data/gallery/.gitkeep
+outputs/
+
+# Personal media
+assets/ntrthanh_face/

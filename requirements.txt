@@ -1,0 +1,9 @@
+numpy>=1.24
+opencv-python>=4.8
+pyyaml>=6.0
+onnx>=1.16                # fixing dynamic input shapes for HTP
+onnxruntime>=1.24.2
+onnxruntime-qnn>=2.7.0    # QNN EP plugin (bundles QNN/QAIRT libs incl. HTP V73), Python>=3.11
+# Optional engines (install when needed):
+# tflite-runtime          # TFLite + QNN delegate
+pytest>=7.0

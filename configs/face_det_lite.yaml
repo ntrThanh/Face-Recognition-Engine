@@ -1,0 +1,86 @@
+# Same as default.yaml but with the face_det_lite detector.
+# Each component is chosen by `type` (model registry).
+# `engines` is a fallback list: the first available engine that loads wins.
+
+detector:
+  # Qualcomm Lightweight-Face-Detection (face_det_lite, BSD-3-Clause), AI Hub v0.64.0.
+  # Fixed 640x480 grayscale input; ~0.6 ms on HTP (w8a8) vs ~3.5 ms for SCRFD-640.
+  # Landmarks are a bit less precise than SCRFD -> enroll with this same config.
+  type: face_det_lite
+  score_threshold: 0.55
+  nms_threshold: 0.4
+  engines:
+    - name: onnxruntime_qnn          # Hexagon HTP NPU, int8 (uint8 I/O; scales from metadata.json)
+      path: /root/ntrthanh/face_recognition/models/detection/face_det_lite/w8a8/face_det_lite.onnx
+      options:
+        htp_arch: 73
+        performance_mode: burst
+    - name: onnxruntime              # CPU fallback
+      path: /root/ntrthanh/face_recognition/models/detection/face_det_lite/float/face_det_lite.onnx
+      options:
+        threads: 4
+
+recognizer:
+  type: arcface
+  model_id: arcface_w600k_mbf      # stored in the DB; changing it requires re-enroll
+  input_size: [112, 112]
+  mean: 127.5
+  std: 127.5
+  color: RGB
+  embedding_dim: 512
+  align_template: arcface_112
+  engines:
+    - name: onnxruntime_qnn
+      path: /root/ntrthanh/face_recognition/models/recognition/w600k_mbf.onnx
+      options:
+        htp_arch: 73
+        performance_mode: burst
+        input_shapes: {input.1: [1, 3, 112, 112]}
+    - name: onnxruntime
+      path: /root/ntrthanh/face_recognition/models/recognition/w600k_mbf.onnx
+      options:
+        threads: 4
+        input_shapes: {input.1: [1, 3, 112, 112]}
+
+database:
+  type: sqlite
+  path: data/db/faces_lite.db       # separate DB: enrolled with this detector
+  gallery: data/gallery            # enrollment images, used by enroll.py --rebuild
+  threshold: 0.4                   # cosine similarity; below -> "unknown"
+  top_k: 1
+
+min_face_size: 40
+opencv_threads: 1                  # OpenCV thread pool size; >1 busy-waits between calls
+
+source:                            # video file / RTSP input
+  backend: gstreamer               # gstreamer (Qualcomm HW decode) | opencv (FFmpeg, CPU decode)
+  gstreamer:
+    python: /usr/bin/python3       # system Python with PyGObject + vendor GStreamer
+    codec: h264                    # h264 | h265 (match the camera)
+    decoder: qtic2vdec             # Qualcomm HW decoder; avdec_h264 = CPU
+    format: nv12                   # nv12: HW decoder output, -> BGR in OpenCV only for used frames
+    latency: 100                   # rtspsrc jitter buffer (ms)
+    max_fps: 5                     # only N frames/s leave the helper; keep = tracking.active_fps
+                                   # (0 = all frames, e.g. for a smooth --out video)
+  rtsp_transport: tcp              # tcp (robust) | udp (lower latency)
+  open_timeout_ms: 10000
+  read_timeout_ms: 5000
+  reconnect: true                  # live streams: reopen on disconnect
+  reconnect_delay: 1.0             # seconds, doubles up to max_reconnect_delay
+  max_reconnect_delay: 30.0
+  max_reconnects: 0                # 0 = retry forever
+  loop: false                      # files: restart at end of video
+
+tracking:
+  # Inference budget: detection runs at most this often (0 = every frame).
+  # Frames in between run no inference and reuse the last results.
+  active_fps: 5                    # while faces are present
+  idle_fps: 1                      # when no face has been seen for idle_after_s
+  idle_after_s: 2.0
+  reembed_interval_s: 3.0          # re-check a known face every N seconds
+  unknown_reembed_interval_s: 0.6  # re-check an unknown face more often
+  type: iou
+  iou_threshold: 0.3               # lower it if people move fast at low active_fps
+  max_missed: 5                    # inference steps a track survives without a detection
+  vote_window: 5                   # name = majority of the last N matches
+  min_hits: 2                      # detections before an identity event is emitted
