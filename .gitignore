@@ -12,4 +12,5 @@ data/gallery/*
 outputs/
 
 # Personal media
-assets/ntrthanh_face/
+assets/*_face/
+assets/tuan_mb_face/
